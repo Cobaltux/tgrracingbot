@@ -1,0 +1,190 @@
+{
+  "server_name": "TGN Racing | Simracing",
+  "description": "TGN Racing — Tarragona, Catalunya. Fundado por HAF. Built to compete.",
+  "lfm_url": "",
+  "roles": [
+    [
+      "Fundador",
+      16716612
+    ],
+    [
+      "Dirección",
+      16716612
+    ],
+    [
+      "Staff",
+      16761856
+    ],
+    [
+      "Ingeniería",
+      9672609
+    ],
+    [
+      "Piloto TGN",
+      16761856
+    ],
+    [
+      "Piloto reserva",
+      16176912
+    ],
+    [
+      "Comunidad",
+      9672609
+    ]
+  ],
+  "categories": [
+    {
+      "name": "01 ━ STARTING GRID",
+      "access": "public",
+      "text": [
+        [
+          "bienvenida",
+          "read"
+        ],
+        [
+          "normativa",
+          "read"
+        ],
+        [
+          "anuncios",
+          "read"
+        ],
+        [
+          "elige-tu-acceso",
+          "read"
+        ]
+      ]
+    },
+    {
+      "name": "02 ━ PADDOCK",
+      "access": "community",
+      "text": [
+        [
+          "general",
+          "chat"
+        ],
+        [
+          "presentaciones",
+          "chat"
+        ],
+        [
+          "simracing",
+          "chat"
+        ],
+        [
+          "clips-y-capturas",
+          "chat"
+        ],
+        [
+          "hardware-y-setups",
+          "chat"
+        ]
+      ],
+      "voice": [
+        "Paddock • General",
+        "Paddock • Simracing"
+      ]
+    },
+    {
+      "name": "03 ━ RACE CONTROL",
+      "access": "community",
+      "text": [
+        [
+          "calendario",
+          "read"
+        ],
+        [
+          "resultados",
+          "read"
+        ],
+        [
+          "noticias-lfm",
+          "read"
+        ],
+        [
+          "directos",
+          "chat"
+        ]
+      ]
+    },
+    {
+      "name": "04 ━ TGN RACING · PRIVADO",
+      "access": "team",
+      "text": [
+        [
+          "briefing",
+          "read"
+        ],
+        [
+          "entrenamientos",
+          "chat"
+        ],
+        [
+          "telemetria-y-setups",
+          "chat"
+        ],
+        [
+          "estrategia",
+          "chat"
+        ],
+        [
+          "debriefing",
+          "chat"
+        ],
+        [
+          "disponibilidad",
+          "chat"
+        ]
+      ],
+      "voice": [
+        "Box TGN • 01",
+        "Box TGN • 02",
+        "Ingeniería • Radio"
+      ]
+    },
+    {
+      "name": "05 ━ ENTRA EN TGN",
+      "access": "public",
+      "text": [
+        [
+          "reclutamiento",
+          "read"
+        ],
+        [
+          "preguntas-frecuentes",
+          "read"
+        ]
+      ]
+    },
+    {
+      "name": "06 ━ DIRECCIÓN · PRIVADO",
+      "access": "staff",
+      "text": [
+        [
+          "staff",
+          "chat"
+        ],
+        [
+          "gestion-pilotos",
+          "chat"
+        ],
+        [
+          "planificacion",
+          "chat"
+        ],
+        [
+          "registro-bot",
+          "read"
+        ]
+      ],
+      "voice": [
+        "Dirección • Reunión"
+      ]
+    },
+    {
+      "name": "07 ━ SOLICITUDES · PRIVADO",
+      "access": "staff",
+      "text": []
+    }
+  ]
+}

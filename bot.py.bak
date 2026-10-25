@@ -1,0 +1,335 @@
+import asyncio
+import base64
+import io
+import json
+import logging
+import os
+from pathlib import Path
+
+import discord
+from discord import app_commands
+from dotenv import load_dotenv
+
+BASE = Path(__file__).resolve().parent
+load_dotenv(BASE / '.env')
+CONFIG = json.loads((BASE / 'config.json').read_text(encoding='utf-8'))
+GUILD_ID = int(os.environ.get('GUILD_ID', '0'))
+TOKEN = os.environ.get('DISCORD_TOKEN', '')
+STATE_PATH = BASE / 'state.json'
+STATE = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {'guild_id': GUILD_ID, 'roles': {}, 'categories': {}, 'channels': {}, 'messages': {}, 'tickets': {}}
+if STATE.get('guild_id') != GUILD_ID:
+    raise SystemExit('state.json pertenece a otro servidor. Usa una carpeta separada por servidor.')
+INSTALL_LOCK = asyncio.Lock()
+TICKET_LOCK = asyncio.Lock()
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+STAFF = ['Fundador', 'Dirección', 'Staff']
+TEAM = STAFF + ['Ingeniería', 'Piloto TGN', 'Piloto reserva']
+
+
+def save():
+    tmp = STATE_PATH.with_suffix('.tmp')
+    tmp.write_text(json.dumps(STATE, ensure_ascii=False, indent=2), encoding='utf-8')
+    tmp.replace(STATE_PATH)
+
+
+def role(guild, name):
+    return guild.get_role(STATE['roles'].get(name, 0))
+
+
+def channel(guild, name):
+    return guild.get_channel(STATE['channels'].get(name, 0))
+
+
+def is_staff(member):
+    return member.guild_permissions.administrator or any(r.id in [STATE['roles'].get(n) for n in STAFF] for r in member.roles)
+
+
+def correct_guild(interaction):
+    return interaction.guild is not None and interaction.guild.id == GUILD_ID
+
+
+def embed(title, body):
+    e = discord.Embed(title=title, description=body, color=0xF01424)
+    e.set_footer(text='TGN RACING • TARRAGONA, CATALUNYA • BUILT TO COMPETE.')
+    return e
+
+
+def overwrites(guild, access, read=False):
+    public = access == 'public'
+    perms = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=public, send_messages=False if read else public, mention_everyone=False, create_public_threads=False, create_private_threads=False),
+        guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, embed_links=True, attach_files=True, manage_channels=True, manage_messages=True)
+    }
+    names = STAFF if access == 'staff' else TEAM if access == 'team' else ['Comunidad'] if access == 'community' else []
+    for name in set(names + STAFF):
+        obj = role(guild, name)
+        if obj:
+            perms[obj] = discord.PermissionOverwrite(view_channel=True, send_messages=(name in STAFF or not read), read_message_history=True, connect=True, speak=True, mention_everyone=False)
+    return perms
+
+
+class AccessView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='Acepto las normas · Entrar al paddock', style=discord.ButtonStyle.danger, custom_id='tgn:community:v1')
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not correct_guild(interaction):
+            return await interaction.response.send_message('Servidor no autorizado.', ephemeral=True)
+        obj = role(interaction.guild, 'Comunidad')
+        if not obj:
+            return await interaction.response.send_message('El servidor todavía no está configurado.', ephemeral=True)
+        try:
+            await interaction.user.add_roles(obj, reason='Aceptación explícita de normas TGN')
+            await interaction.response.send_message('Acceso al paddock habilitado. ¡Bienvenido a TGN Racing!', ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message('No puedo asignar el rol. El propietario debe revisar permisos y jerarquía.', ephemeral=True)
+
+
+class ApplicationModal(discord.ui.Modal, title='Solicitud · TGN Racing'):
+    alias = discord.ui.TextInput(label='Alias o nombre de piloto', max_length=70)
+    simulator = discord.ui.TextInput(label='Simulador y experiencia', style=discord.TextStyle.paragraph, max_length=700)
+    availability = discord.ui.TextInput(label='Disponibilidad y zona horaria', max_length=250)
+    objective = discord.ui.TextInput(label='Objetivos y qué puedes aportar', style=discord.TextStyle.paragraph, max_length=900)
+    lfm = discord.ui.TextInput(label='Perfil LFM (opcional)', required=False, max_length=250)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        async with TICKET_LOCK:
+            guild = interaction.guild
+            uid = str(interaction.user.id)
+            old = STATE['tickets'].get(uid, {})
+            existing = guild.get_channel(old.get('channel', 0))
+            if existing:
+                return await interaction.followup.send(f'Ya tienes una solicitud: {existing.mention}. Contacta con staff para reabrirla si está cerrada.', ephemeral=True)
+            category = guild.get_channel(STATE['categories'].get('07 ━ SOLICITUDES · PRIVADO', 0))
+            if not category:
+                return await interaction.followup.send('Falta instalar la categoría de solicitudes.', ephemeral=True)
+            if len(category.channels) >= 45:
+                return await interaction.followup.send('La bandeja de solicitudes está llena. Contacta con staff.', ephemeral=True)
+            perms = overwrites(guild, 'staff')
+            perms[interaction.user] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, attach_files=True)
+            try:
+                ch = await guild.create_text_channel(f'solicitud-{interaction.user.id}', category=category, overwrites=perms, reason='Solicitud voluntaria de acceso a TGN Racing')
+                STATE['tickets'][uid] = {'channel': ch.id, 'closed': False}
+                save()
+                e = embed('NUEVA SOLICITUD · TGN RACING', f'Solicitante: {interaction.user.mention}\nLa admisión la decide el equipo. No hay acceso automático al rol de piloto.')
+                for label, value in [('Alias', self.alias.value), ('Simulador / experiencia', self.simulator.value), ('Disponibilidad', self.availability.value), ('Objetivos', self.objective.value), ('Perfil LFM (no verificado)', self.lfm.value or 'No facilitado')]:
+                    e.add_field(name=label, value=value, inline=False)
+                await ch.send(embed=e, allowed_mentions=discord.AllowedMentions.none())
+                await interaction.followup.send(f'Solicitud creada: {ch.mention}. Solo tú, staff y administradores pueden verla.', ephemeral=True)
+            except discord.HTTPException:
+                logging.exception('Error creando solicitud')
+                await interaction.followup.send('Discord no ha permitido completar la solicitud. Avisa al staff.', ephemeral=True)
+
+
+class RecruitmentView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='Presentar solicitud privada', style=discord.ButtonStyle.danger, custom_id='tgn:apply:v1')
+    async def apply(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not correct_guild(interaction):
+            return await interaction.response.send_message('Servidor no autorizado.', ephemeral=True)
+        await interaction.response.send_modal(ApplicationModal())
+
+
+async def publish(guild, key, title, body, view=None, logo=False):
+    ch = channel(guild, key)
+    if not ch:
+        return
+    old_id = STATE['messages'].get(key)
+    if old_id:
+        try:
+            await ch.fetch_message(old_id)
+            return
+        except discord.NotFound:
+            pass
+    e = embed(title, body)
+    kwargs = {'embed': e, 'allowed_mentions': discord.AllowedMentions.none()}
+    if view:
+        kwargs['view'] = view
+    if logo:
+        original = base64.b64decode((BASE / 'logo_base64.txt').read_text())
+        kwargs['file'] = discord.File(io.BytesIO(original), filename='tgn-logo.jpeg')
+        e.set_thumbnail(url='attachment://tgn-logo.jpeg')
+    msg = await ch.send(**kwargs)
+    STATE['messages'][key] = msg.id
+    save()
+
+
+async def install(guild, author):
+    async with INSTALL_LOCK:
+        needed = ['manage_channels', 'manage_roles', 'view_channel', 'send_messages', 'embed_links', 'attach_files', 'read_message_history', 'manage_guild']
+        missing = [name for name in needed if not getattr(guild.me.guild_permissions, name)]
+        if missing:
+            raise RuntimeError('Faltan permisos del bot: ' + ', '.join(missing))
+        # Nunca se adoptan roles o canales ajenos solo por coincidir en nombre.
+        for name, color in CONFIG['roles']:
+            obj = role(guild, name)
+            if not obj:
+                obj = await guild.create_role(name=name, color=discord.Color(color), permissions=discord.Permissions.none(), hoist=name in TEAM, mentionable=False, reason='Instalación TGN aprobada')
+                STATE['roles'][name] = obj.id
+                save()
+        if guild.me.top_role <= max((role(guild, n) for n, _ in CONFIG['roles']), key=lambda r: r.position):
+            raise RuntimeError('Coloca el rol del bot por encima de todos los roles TGN y repite /instalar.')
+        order = [role(guild, n) for n, _ in CONFIG['roles']]
+        await guild.edit_role_positions(positions={obj: i + 1 for i, obj in enumerate(reversed(order))}, reason='Jerarquía TGN')
+        for spec in CONFIG['categories']:
+            cat = guild.get_channel(STATE['categories'].get(spec['name'], 0))
+            if not cat:
+                cat = await guild.create_category(spec['name'], overwrites=overwrites(guild, spec['access']), reason='Instalación TGN aprobada')
+                STATE['categories'][spec['name']] = cat.id
+                save()
+            for name, mode in spec['text']:
+                ch = channel(guild, name)
+                if not ch:
+                    ch = await guild.create_text_channel(name, category=cat, overwrites=overwrites(guild, spec['access'], mode=='read'), slowmode_delay=5 if mode=='chat' else 0, reason='Instalación TGN aprobada')
+                    STATE['channels'][name] = ch.id
+                    save()
+            for name in spec.get('voice', []):
+                if not channel(guild, name):
+                    ch = await guild.create_voice_channel(name, category=cat, overwrites=overwrites(guild, spec['access']), user_limit=0, reason='Instalación TGN aprobada')
+                    STATE['channels'][name] = ch.id
+                    save()
+        # El rol es descriptivo; no otorga Administrator ni suplanta al propietario.
+        if author.id == guild.owner_id:
+            await author.add_roles(role(guild, 'Fundador'), reason='Propietario autoriza instalación TGN')
+        await publish(guild, 'bienvenida', 'TGN RACING · BUILT TO COMPETE.', 'Desde Tarragona, competimos con precisión, determinación y espíritu de equipo.\n\nFundado por HAF.\n\n1. Lee #normativa.\n2. Acepta las normas en #elige-tu-acceso.\n3. Preséntate en el paddock.\n\nEscudería virtual independiente dentro del ecosistema LFM. Sin afiliación oficial.', logo=True)
+        await publish(guild, 'normativa', 'NORMATIVA · RESPETO DENTRO Y FUERA DE PISTA', '1. Respeta a todas las personas. Sin acoso, insultos discriminatorios ni amenazas.\n2. Compite con limpieza. Nada de trampas, exploits ni conducta antideportiva.\n3. No publiques datos personales, tokens, contenido ilegal ni material sin autorización.\n4. Sin spam, publicidad no autorizada ni menciones masivas.\n5. Usa los canales correspondientes. Setups y telemetría del equipo se quedan en la zona privada.\n6. Las discrepancias deportivas se tratan con respeto y pruebas, no con ataques públicos.\n7. Sigue las indicaciones del staff. Las sanciones se revisarán según gravedad y contexto.\n\nAl pulsar el acceso confirmas que has leído estas normas. Esto no verifica tu identidad ni te convierte en piloto.')
+        await publish(guild, 'elige-tu-acceso', 'TU SITIO EN EL PADDOCK', 'Acepta las normas para obtener el rol Comunidad. Este botón NO da acceso a las zonas de pilotos, ingeniería o dirección.', AccessView())
+        await publish(guild, 'reclutamiento', '¿TIENES LO NECESARIO PARA COMPETIR?', 'Presenta tu experiencia, disponibilidad y objetivos mediante una solicitud privada. El equipo confirmará los requisitos y decidirá si procede una prueba o incorporación.\n\nNo envíes contraseñas, documentos de identidad ni datos sensibles. Staff y administradores podrán leer la solicitud. No se garantiza una plaza.', RecruitmentView())
+        await publish(guild, 'preguntas-frecuentes', 'ANTES DE LA PRIMERA VUELTA', '**¿Cómo accedo?** Lee las normas y utiliza el botón de acceso.\n**¿Cómo me convierto en piloto?** Presenta una solicitud; el equipo evalúa cada caso.\n**¿Dónde están los resultados?** Se publicarán cuando estén confirmados.\n**¿Hay perfil de LFM?** Se publicará únicamente cuando su URL esté confirmada.\n**¿Dónde pido ayuda?** Abre una solicitud privada.\n**¿Cómo se tratan mis datos?** Las solicitudes se guardan como mensajes de Discord. Contacta con staff para solicitar su eliminación. No se exportan transcripciones automáticamente.')
+        for key, title, body in [
+            ('anuncios','COMUNICADOS OFICIALES','Aquí se publicarán únicamente novedades confirmadas por el equipo.'),
+            ('calendario','PRÓXIMA SALIDA','Próximamente anunciaremos nuestras próximas carreras. Sin fechas ni horarios inventados.'),
+            ('resultados','RESULTADOS VERIFICADOS','Fecha · Serie · Circuito · Categoría · Piloto · Posición · Mejor vuelta · Incidentes.\nTodavía no hay resultados publicados.'),
+            ('noticias-lfm','LOW FUEL MOTORSPORT','Espacio para noticias y enlaces contrastados. No existe sincronización automática ni afiliación oficial.\nPlataforma general: https://lowfuelmotorsport.com/'),
+            ('briefing','BRIEFING DE CARRERA','Plantilla: serie, circuito, fecha y zona horaria, pilotos, reglamento, duración, estrategia, combustible, neumáticos y responsabilidades. Completar solo con datos confirmados.'),
+            ('disponibilidad','DISPONIBILIDAD DE PILOTOS','Comparte sesión o evento, disponibilidad y zona horaria. No publiques calendarios personales sensibles.'),
+            ('staff','GESTIÓN DEL EQUIPO','Roles Fundador, Dirección y Staff acceden a esta zona. /piloto asigna o retira acceso a pilotos (solo administradores). /cerrar bloquea una solicitud sin borrarla.\nRevisar solicitudes, permisos y retención de datos periódicamente. No hay AutoMod configurado por este instalador.'),
+        ]:
+            await publish(guild, key, title, body)
+        save()
+
+
+class ConfirmInstall(discord.ui.View):
+    def __init__(self, user_id):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+
+    @discord.ui.button(label='Confirmar instalación de TGN Racing', style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id or not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message('Solo el administrador que abrió el plan puede confirmarlo.', ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        button.disabled = True
+        await interaction.edit_original_response(view=self)
+        try:
+            await install(interaction.guild, interaction.user)
+            await interaction.followup.send('Estructura y paneles instalados. Usa /identidad si deseas aplicar el nombre y el logo al servidor. Revisa los permisos antes de invitar a otras personas.', ephemeral=True)
+        except Exception as exc:
+            logging.exception('Instalación incompleta')
+            await interaction.followup.send(f'Instalación incompleta: {exc}\nNo se eliminó contenido previo. Corrige el problema y repite /instalar sin borrar state.json.', ephemeral=True)
+
+
+class TGNClient(discord.Client):
+    def __init__(self):
+        super().__init__(intents=discord.Intents.default(), allowed_mentions=discord.AllowedMentions.none())
+        self.tree = app_commands.CommandTree(self)
+
+    async def setup_hook(self):
+        self.add_view(AccessView())
+        self.add_view(RecruitmentView())
+        target = discord.Object(id=GUILD_ID)
+        self.tree.copy_global_to(guild=target)
+        await self.tree.sync(guild=target)
+
+    async def on_ready(self):
+        logging.info('Bot conectado. Servidor autorizado: %s. Ejecuta /instalar.', GUILD_ID)
+
+
+client = TGNClient()
+
+
+@client.tree.command(name='instalar', description='Revisar y confirmar la estructura de TGN Racing')
+@app_commands.default_permissions(administrator=True)
+@app_commands.checks.has_permissions(administrator=True)
+async def instalar(interaction: discord.Interaction):
+    if not correct_guild(interaction):
+        return await interaction.response.send_message('Servidor no autorizado.', ephemeral=True)
+    ntext = sum(len(c['text']) for c in CONFIG['categories'])
+    nvoice = sum(len(c.get('voice', [])) for c in CONFIG['categories'])
+    e = embed('PLAN DE INSTALACIÓN', f'Servidor: {interaction.guild.name} ({interaction.guild.id})\n\nSe crearán hasta {len(CONFIG["roles"])} roles, {len(CONFIG["categories"])} categorías, {ntext} canales de texto y {nvoice} de voz. Se publicarán normas, panel de acceso y solicitudes privadas. El propietario recibirá el rol descriptivo Fundador.\n\nNo se elimina contenido existente, no se cambia el nombre ni el icono automáticamente y no se configura AutoMod. Los objetos ya registrados en state.json no se duplican. Si faltan permisos puede quedar una instalación parcial reanudable.\n\nRecomendado: servidor nuevo. No borres state.json.')
+    await interaction.response.send_message(embed=e, view=ConfirmInstall(interaction.user.id), ephemeral=True)
+
+
+@client.tree.command(name='identidad', description='Aplicar nombre y logo original al servidor (requiere confirmación)')
+@app_commands.default_permissions(administrator=True)
+@app_commands.checks.has_permissions(administrator=True)
+async def identidad(interaction: discord.Interaction, confirmar: bool = False):
+    if not correct_guild(interaction):
+        return await interaction.response.send_message('Servidor no autorizado.', ephemeral=True)
+    if not confirmar:
+        return await interaction.response.send_message(f'Se reemplazarán el nombre del servidor por «{CONFIG["server_name"]}» y su icono por el logo original facilitado. Ejecuta /identidad confirmar:True para autorizarlo. Discord puede mostrar el icono dentro de una máscara circular.', ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    original = base64.b64decode((BASE / 'logo_base64.txt').read_text())
+    await interaction.guild.edit(name=CONFIG['server_name'], icon=original, reason=f'Identidad TGN confirmada por {interaction.user.id}')
+    await interaction.followup.send('Nombre e icono actualizados con el archivo original.', ephemeral=True)
+
+
+@client.tree.command(name='piloto', description='Asignar o retirar el acceso privado de piloto')
+@app_commands.default_permissions(administrator=True)
+@app_commands.checks.has_permissions(administrator=True)
+async def piloto(interaction: discord.Interaction, miembro: discord.Member, activar: bool):
+    if not correct_guild(interaction):
+        return await interaction.response.send_message('Servidor no autorizado.', ephemeral=True)
+    obj = role(interaction.guild, 'Piloto TGN')
+    if not obj:
+        return await interaction.response.send_message('Primero instala la estructura.', ephemeral=True)
+    if activar:
+        await miembro.add_roles(obj, reason=f'Alta de piloto autorizada por {interaction.user.id}')
+    else:
+        await miembro.remove_roles(obj, reason=f'Baja de piloto autorizada por {interaction.user.id}')
+    await interaction.response.send_message(f'Acceso de piloto {"asignado" if activar else "retirado"}. Otros roles de equipo pueden seguir dando acceso y deben revisarse por separado.', ephemeral=True)
+
+
+@client.tree.command(name='cerrar', description='Cerrar la solicitud actual sin borrar mensajes')
+async def cerrar(interaction: discord.Interaction):
+    if not correct_guild(interaction) or not is_staff(interaction.user):
+        return await interaction.response.send_message('Solo el staff puede cerrar solicitudes.', ephemeral=True)
+    entry = next(((uid, t) for uid, t in STATE['tickets'].items() if t['channel']==interaction.channel_id), None)
+    if not entry:
+        return await interaction.response.send_message('Utiliza este comando dentro de una solicitud.', ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    uid, ticket = entry
+    member = interaction.guild.get_member(int(uid))
+    if member is None:
+        try:
+            member = await interaction.guild.fetch_member(int(uid))
+        except discord.NotFound:
+            member = None
+    if member:
+        await interaction.channel.set_permissions(member, view_channel=True, send_messages=False, read_message_history=True, reason='Solicitud cerrada por staff')
+    ticket['closed'] = True
+    save()
+    await interaction.channel.send(embed=embed('SOLICITUD CERRADA', 'El staff ha cerrado esta conversación. Se conserva para su revisión; no se ha borrado ni exportado. Contacta con el equipo para reabrirla o solicitar eliminación.'))
+    await interaction.followup.send('Solicitud cerrada y escritura del solicitante bloqueada. Un administrador conserva siempre su acceso administrativo.', ephemeral=True)
+
+
+@client.tree.error
+async def command_error(interaction: discord.Interaction, error):
+    logging.error('Error de comando: %s', type(error).__name__)
+    msg = 'No se pudo completar la acción. Revisa permisos, jerarquía y el registro local del bot.'
+    if isinstance(error, app_commands.MissingPermissions):
+        msg = 'No tienes los permisos necesarios para este comando.'
+    if interaction.response.is_done():
+        await interaction.followup.send(msg, ephemeral=True)
+    else:
+        await interaction.response.send_message(msg, ephemeral=True)
+
+
+if __name__ == '__main__':
+    if not TOKEN or not GUILD_ID:
+        raise SystemExit('Completa DISCORD_TOKEN y GUILD_ID en .env. Nunca publiques el token.')
+    client.run(TOKEN, log_level=logging.INFO)

@@ -1,0 +1,78 @@
+{
+  "guild_id": 1563920761968664846,
+  "roles": {
+    "Fundador": 1563925929758294106,
+    "DirecciÃƒÂ³n": 1563925930920124506,
+    "Staff": 1563925932337790986,
+    "IngenierÃƒÂ­a": 1563925934162190507,
+    "Piloto TGN": 1563925935793766460,
+    "Piloto reserva": 1563925937526149150,
+    "Comunidad": 1563925938310217831,
+    "DirecciÃ³n": 1563927100262588448,
+    "IngenierÃ­a": 1563927101525069986,
+    "Dirección": 1563928013261774940,
+    "Ingeniería": 1563928014645891294
+  },
+  "categories": {
+    "01 ━ STARTING GRID": 1563928921551151221,
+    "02 ━ PADDOCK": 1563928931638186145,
+    "03 ━ RACE CONTROL": 1563928944359510029,
+    "04 ━ TGN RACING · PRIVADO": 1563928965775630400,
+    "05 ━ ENTRA EN TGN": 1563928981751988354,
+    "06 ━ DIRECCIÓN · PRIVADO": 1563928987892322354,
+    "07 ━ SOLICITUDES · PRIVADO": 1563928997295947888
+  },
+  "channels": {
+    "bienvenida": 1563928923950288946,
+    "normativa": 1563928925606776835,
+    "anuncios": 1563928927892803736,
+    "elige-tu-acceso": 1563928929654411337,
+    "general": 1563928933030957236,
+    "presentaciones": 1563928934846959676,
+    "simracing": 1563928936210108427,
+    "clips-y-capturas": 1563928937304821983,
+    "hardware-y-setups": 1563928938881876128,
+    "Paddock • General": 1563928940945346700,
+    "Paddock • Simracing": 1563928943046955099,
+    "calendario": 1563928945806680096,
+    "resultados": 1563928947551502471,
+    "noticias-lfm": 1563928949493334176,
+    "directos": 1563928951192166400,
+    "briefing": 1563928967260409956,
+    "entrenamientos": 1563928968745455646,
+    "telemetria-y-setups": 1563928970167058432,
+    "estrategia": 1563928971287076985,
+    "debriefing": 1563928972520067212,
+    "disponibilidad": 1563928974017695824,
+    "Box TGN • 01": 1563928976949248031,
+    "Box TGN • 02": 1563928978912190494,
+    "Ingeniería • Radio": 1563928980267081868,
+    "reclutamiento": 1563928984062795807,
+    "preguntas-frecuentes": 1563928985681797141,
+    "staff": 1563928990119633029,
+    "gestion-pilotos": 1563928991985959053,
+    "planificacion": 1563928993328271370,
+    "registro-bot": 1563928995001798706,
+    "Dirección • Reunión": 1563928996087861329
+  },
+  "messages": {
+    "bienvenida": 1563928999984369795,
+    "normativa": 1563929002312339519,
+    "elige-tu-acceso": 1563929004073816215,
+    "reclutamiento": 1563929005172727931,
+    "preguntas-frecuentes": 1563929007240642703,
+    "anuncios": 1563929009551577149,
+    "calendario": 1563929011837739121,
+    "resultados": 1563929013393821758,
+    "noticias-lfm": 1563929015545499779,
+    "briefing": 1563929017734664316,
+    "disponibilidad": 1563929022138818672,
+    "staff": 1563929023787180113
+  },
+  "tickets": {
+    "1521562560909017208": {
+      "channel": 1563929445230977167,
+      "closed": false
+    }
+  }
+}

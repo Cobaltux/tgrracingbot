@@ -1,0 +1,47 @@
+TGN RACING | BUILT TO COMPETE.
+Fundado por HAF
+
+01 ━ STARTING GRID [public]
+  # bienvenida
+  # normativa
+  # anuncios
+  # elige-tu-acceso
+
+02 ━ PADDOCK [community]
+  # general
+  # presentaciones
+  # simracing
+  # clips-y-capturas
+  # hardware-y-setups
+  VOZ: Paddock • General
+  VOZ: Paddock • Simracing
+
+03 ━ RACE CONTROL [community]
+  # calendario
+  # resultados
+  # noticias-lfm
+  # directos
+
+04 ━ TGN RACING · PRIVADO [team]
+  # briefing
+  # entrenamientos
+  # telemetria-y-setups
+  # estrategia
+  # debriefing
+  # disponibilidad
+  VOZ: Box TGN • 01
+  VOZ: Box TGN • 02
+  VOZ: Ingeniería • Radio
+
+05 ━ ENTRA EN TGN [public]
+  # reclutamiento
+  # preguntas-frecuentes
+
+06 ━ DIRECCIÓN · PRIVADO [staff]
+  # staff
+  # gestion-pilotos
+  # planificacion
+  # registro-bot
+  VOZ: Dirección • Reunión
+
+07 ━ SOLICITUDES · PRIVADO [staff]
