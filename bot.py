@@ -575,3 +575,16 @@ async def command_error(i:discord.Interaction,error):
 if __name__=='__main__':
     if not TOKEN or not GUILD_ID:raise SystemExit('Completa DISCORD_TOKEN y GUILD_ID en .env. No compartas el token.')
     client.run(TOKEN,log_level=logging.INFO)
+
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+def run_health_check():
+    server = HTTPServer(('0.0.0.0', 10000), HealthCheckHandler)
+    server.serve_forever()
